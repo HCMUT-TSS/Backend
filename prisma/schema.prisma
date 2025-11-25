@@ -1,0 +1,168 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  name          String?  @db.NVarChar(255)
+  email         String   @unique @db.NVarChar(255)
+  password      String   @db.VarChar(255)
+  phoneNumber   String?  @db.VarChar(20)
+  dateOfBirth   DateTime? @db.Date
+  admissionDate DateTime? @db.Date
+  faculty       String?  @db.NVarChar(255)
+  role          String   @default("student") @db.VarChar(20) // student|tutor|admin
+
+  student       Student?
+  tutor         Tutor?
+  admin         Admin?
+  @@map("Users")
+}
+
+model Student {
+  userId    Int      @id
+  mssv      String?  @db.VarChar(50)
+  studentId String?  @db.VarChar(50)
+  faculty   String?  @db.NVarChar(255)
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  requestBookings   RequestBooking[]
+  programStudents   TutorProgramStudent[]
+  sessionStudents   SessionStudent[]
+  reviews           Review[]
+
+  @@map("Student")
+}
+
+model Tutor {
+  userId Int @id
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  schedules Schedule[]
+  programs  TutorProgramTutor[]
+  @@map("Tutor")
+}
+
+model Admin {
+  userId Int @id
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  @@map("Admin")
+}
+
+model RequestBooking {
+  id        Int      @id @default(autoincrement())
+  studentId Int
+  email     String   @db.VarChar(255)
+  faculty   String?  @db.NVarChar(255)
+  subject   String?  @db.NVarChar(255)
+  status    String?  @db.NVarChar(50)
+
+  student   Student  @relation(fields: [studentId], references: [userId])
+
+  @@map("RequestBooking")
+}
+
+model Schedule {
+  id         Int    @id @default(autoincrement())
+  tutorId    Int
+  timeInWeek String @db.NVarChar(50)
+  day        String @db.NVarChar(20)
+  tutor      Tutor  @relation(fields: [tutorId], references: [userId])
+  @@map("Schedule")
+}
+
+model TutorProgram {
+  id          Int       @id @default(autoincrement())
+  title       String    @db.NVarChar(255)
+  description String?   @db.NVarChar(Max)
+  timeOpen    DateTime? @db.Time
+  timeClose   DateTime? @db.Time
+  isActive    Boolean   @default(true)
+  updatedAt   DateTime  @updatedAt
+
+  sessions Session[]
+  students TutorProgramStudent[]
+  tutors   TutorProgramTutor[]
+
+  @@map("TutorProgram")
+}
+
+model TutorProgramStudent {
+  programId Int
+  studentId Int
+
+  program   TutorProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  student   Student      @relation(fields: [studentId], references: [userId], onDelete: Cascade)
+
+  @@id([programId, studentId])
+  @@map("TutorProgramStudent")
+}
+
+model TutorProgramTutor {
+  programId Int
+  tutorId   Int
+
+  program   TutorProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  tutor     Tutor        @relation(fields: [tutorId], references: [userId], onDelete: Cascade)
+
+  @@id([programId, tutorId])
+  @@map("TutorProgramTutor")
+}
+
+model Session {
+  id        Int      @id @default(autoincrement())
+  programId Int
+  topic     String?  @db.NVarChar(255)
+  status    String?  @db.NVarChar(50)
+  day       DateTime @db.Date
+
+  program   TutorProgram   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  resources Resource[]
+  students  SessionStudent[]
+  reviews   Review[]
+
+  @@map("Session")
+}
+
+model SessionStudent {
+  sessionId Int
+  studentId Int
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student   Student @relation(fields: [studentId], references: [userId], onDelete: Cascade)
+  @@id([sessionId, studentId])
+  @@map("SessionStudent")
+}
+
+model Resource {
+  id        Int     @id @default(autoincrement())
+  sessionId Int
+  name      String  @db.NVarChar(255)
+  type      String? @db.NVarChar(100)
+  url       String  @db.NVarChar(Max)
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@map("Resource")
+}
+
+model Review {
+  id          Int     @id @default(autoincrement())
+  sessionId   Int
+  studentId   Int
+  description String? @db.NVarChar(Max)
+  rating      Int
+
+  session     Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student     Student @relation(fields: [studentId], references: [userId])
+
+  @@map("Review")
+}
