@@ -51,6 +51,9 @@ JWT_EXPIRES_IN=7d
 ```
 npm run prisma:push
 
+#Tạo admin(Chỉ cần dùng 1 lần duy nhất)
+npm scripts/createAdmin.js
+
 #Chạy server
 npm run dev        
 # hoặc

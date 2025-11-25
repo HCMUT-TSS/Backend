@@ -1,8 +1,12 @@
-// src/config/db.js – DÀNH CHO PRISMA 6.5.0
-const { PrismaClient } = require('@prisma/client');
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient({
   log: ['query', 'info', 'warn', 'error'],
 });
+async function disconnectPrisma() {
+  await prisma.$disconnect();
+}
+process.on('SIGINT', disconnectPrisma);
+process.on('SIGTERM', disconnectPrisma);
 
-module.exports = prisma;
+export default prisma;
