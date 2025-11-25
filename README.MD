@@ -49,10 +49,10 @@ JWT_EXPIRES_IN=7d
 
 ## Sync database (tạo bảng tự động)
 ```
-npm run prisma:push
+npm run prisma:push hoặc npx prisma db push  
 
 #Tạo admin(Chỉ cần dùng 1 lần duy nhất)
-npm scripts/createAdmin.js
+node scripts/createAdmin.js
 
 #Chạy server
 npm run dev        
