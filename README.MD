@@ -2,7 +2,7 @@
 
 Backend chính thức của hệ thống TSS – Full Express.js + Prisma 6.5.0 + SQL Server
 
-### Tech Stack
+## Tech Stack
 - Node.js 18+
 - Express.js 5
 - Prisma ORM 6.5.0 (ổn định 100% với SQL Server)
@@ -10,7 +10,9 @@ Backend chính thức của hệ thống TSS – Full Express.js + Prisma 6.5.0 
 - JWT + Bcrypt
 - Cloudinary, Multer, Nodemailer, Helmet, Morgan, CORS
 
-### Cấu trúc thư mục (MVC chuẩn)
+## Cấu trúc thư mục (MVC chuẩn)
+
+```
 src/
 ├── config/          # db.js, cloudinary.js,...
 ├── controllers/
@@ -21,7 +23,7 @@ src/
 prisma/
 ├── schema.prisma
 ├── seed.js (tùy chọn)
-
+```
 ### Cách chạy dự án
 
 ```bash
