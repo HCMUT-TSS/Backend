@@ -35,7 +35,7 @@ cd Tutor-Supporting-System/Backend
 npm install
 ```
 
-##Tạo file .env (copy từ .env.example hoặc dùng cái dưới)
+## Tạo file .env (copy từ .env.example hoặc dùng cái dưới)
 ```
 # File .env:
 # SQL Server
@@ -47,7 +47,7 @@ JWT_SECRET=supersecretjwtkey2025_change_in_production
 JWT_EXPIRES_IN=7d
 ```
 
-##Sync database (tạo bảng tự động)
+## Sync database (tạo bảng tự động)
 ```
 npm run prisma:push
 
