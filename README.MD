@@ -47,7 +47,7 @@ JWT_SECRET=supersecretjwtkey2025_change_in_production
 JWT_EXPIRES_IN=7d
 ```
 
-# 4. Sync database (tạo bảng tự động)
+## 4. Sync database (tạo bảng tự động)
 ```
 npm run prisma:push
 
@@ -55,3 +55,4 @@ npm run prisma:push
 npm run dev        
 # hoặc
 npm start
+```
