@@ -32,8 +32,7 @@ model User {
 
 model Student {
   userId    Int      @id
-  mssv      String?  @db.VarChar(50)
-  studentId String?  @db.VarChar(50)
+  mssv      String  @db.VarChar(20)
   faculty   String?  @db.NVarChar(255)
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -48,38 +47,50 @@ model Student {
 
 model Tutor {
   userId Int @id
+  status String @default("pending") @db.VarChar(20)
+  appliedAt  DateTime @default(now())
+  approvedAt DateTime?
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   schedules Schedule[]
   programs  TutorProgramTutor[]
+  bookingRequests RequestBooking[]
   @@map("Tutor")
 }
 
 model Admin {
   userId Int @id
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  @@map("Admin")
+  @@map("Admins")
 }
 
 model RequestBooking {
   id        Int      @id @default(autoincrement())
   studentId Int
+  tutorId   Int?
   email     String   @db.VarChar(255)
   faculty   String?  @db.NVarChar(255)
   subject   String?  @db.NVarChar(255)
-  status    String?  @db.NVarChar(50)
+  description String? @db.NVarChar(Max)
+  status    String?  @default("pending") @db.NVarChar(50)
+  createdAt DateTime @default(now())
 
-  student   Student  @relation(fields: [studentId], references: [userId])
+  student Student @relation(fields: [studentId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  tutor   Tutor?  @relation(fields: [tutorId],   references: [userId], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("RequestBooking")
 }
 
 model Schedule {
-  id         Int    @id @default(autoincrement())
-  tutorId    Int
-  timeInWeek String @db.NVarChar(50)
-  day        String @db.NVarChar(20)
-  tutor      Tutor  @relation(fields: [tutorId], references: [userId])
-  @@map("Schedule")
+  id        Int      @id @default(autoincrement())
+  tutorId   Int
+  dayOfWeek Int   
+  startTime String   @db.VarChar(10)
+  endTime   String   @db.VarChar(10)
+
+  tutor     Tutor    @relation(fields: [tutorId], references: [userId], onDelete: Cascade)
+
+  @@unique([tutorId, dayOfWeek, startTime])
+  @@map("Schedules")
 }
 
 model TutorProgram {
