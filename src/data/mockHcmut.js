@@ -49,7 +49,10 @@ const HCMUT_DATABASE = {
 
 export const getProfileFromDATACORE = (email) => {
   const normalized = email.trim().toLowerCase();
-
+  console.log(`\n[MOCK DATACORE] Tra cứu hồ sơ từ HCMUT_DATACORE`);
+  console.log(`   Email: ${email}`);
+  console.log(`   Thời gian: ${new Date().toLocaleString('vi-VN')}`);
+  console.log(`   Đang tìm trong ${Object.keys(HCMUT_DATABASE).length} bản ghi mock...`);
   const entry = Object.entries(HCMUT_DATABASE).find(
     ([_, profile]) => profile.email.toLowerCase() === normalized
   );
@@ -59,7 +62,11 @@ export const getProfileFromDATACORE = (email) => {
   }
 
   const [ssoSub, data] = entry;
-
+  console.log(`[MOCK DATACORE] Tìm thấy! → Trả về hồ sơ`);
+  console.log(`   MSSV/Mã GV: ${ssoSub}`);
+  console.log(`   Họ tên: ${data.name}`);
+  console.log(`   Vai trò: ${data.role}`);
+  console.log(`   Khoa: ${data.faculty}\n`);
   return {
     ssoSub,
     name: data.name,
