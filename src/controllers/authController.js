@@ -1,185 +1,124 @@
-import { PrismaClient } from '@prisma/client';
-import { hashPassword, comparePassword } from '../utils/password.js';
-import { signToken } from '../utils/jwt.js';
+import { getProfileFromDATACORE } from "../data/mockHcmut.js";
+import { signToken } from "../utils/jwt.js";
+import prisma from "../config/db.js";
 
-const prisma = new PrismaClient();
+const ALLOWED_DOMAINS = ["student.hcmut.edu.vn", "hcmut.edu.vn"];
 
-// ==================== ĐĂNG KÝ SINH VIÊN ====================
-export const registerStudent = async (req, res) => {
-  const {
-    email, password, name, phoneNumber,
-    dateOfBirth, admissionDate, faculty, mssv
-  } = req.body;
+export const ssoLogin = async (req, res) => {
+  const { email } = req.body;
 
-  if (!email || !password || !name || !mssv) {
-    return res.status(400).json({ message: "Email, mật khẩu, họ tên và MSSV là bắt buộc" });
+  if (!email || typeof email !== "string") {
+    return res.status(400).json({ message: "Vui lòng cung cấp email HCMUT" });
   }
 
-  const mssvTrimmed = mssv.trim();
-  if (mssvTrimmed.length < 6 || mssvTrimmed.length > 20) {
-    return res.status(400).json({ message: "MSSV không hợp lệ" });
+  const normalizedEmail = email.trim().toLowerCase();
+  const domain = normalizedEmail.split("@")[1];
+
+  if (!domain || !ALLOWED_DOMAINS.includes(domain)) {
+    return res.status(403).json({ message: "Chỉ chấp nhận email HCMUT (@student.hcmut.edu.vn hoặc @hcmut.edu.vn)" });
   }
-
-  const [emailExist, mssvExist] = await Promise.all([
-    prisma.user.findUnique({ where: { email } }),
-    prisma.student.findFirst({ where: { mssv: mssvTrimmed } })
-  ]);
-
-  if (emailExist) return res.status(400).json({ message: "Email đã được sử dụng" });
-  if (mssvExist) return res.status(400).json({ message: "MSSV đã tồn tại" });
-
-  const hashed = hashPassword(password);
 
   try {
-    const user = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          email,
-          password: hashed,
-          name: name.trim(),
-          phoneNumber: phoneNumber?.trim() || null,
-          dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-          admissionDate: admissionDate ? new Date(admissionDate) : null,
-          faculty: faculty?.trim() || null,
-          role: "student"
-        }
-      });
+    // Lấy profile từ mock DATACORE
+    const profile = getProfileFromDATACORE(normalizedEmail);
 
-      await tx.student.create({
-        data: {
-          userId: user.id,
-          mssv: mssvTrimmed,
-          faculty: faculty?.trim() || null
-        }
-      });
-
-      return user;
+    // Tìm user theo email
+    let user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { student: true, tutor: true, admin: true },
     });
 
-    const token = signToken({ id: user.id, role: "student" });
+    const userData = {
+      ssoSub: profile.ssoSub,
+      ssoProvider: "hcmut",
+      email: normalizedEmail,
+      name: profile.name,
+      faculty: profile.faculty,
+      role: profile.role,              // student | tutor | admin
+      phoneNumber: profile.phoneNumber,
+      dateOfBirth: profile.dateOfBirth,
+      admissionDate: profile.admissionDate,
+    };
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: userData,
+        include: { student: true, tutor: true, admin: true },
+      });
+    } else {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: userData,
+        include: { student: true, tutor: true, admin: true },
+      });
+    }
+
+    if ((profile.role === "student" || profile.role === "tutor")) {
+      await prisma.student.upsert({
+        where: { userId: user.id },
+        update: { mssv: profile.ssoSub },
+        create: { userId: user.id, mssv: profile.ssoSub },
+      });
+    }
+
+    if (profile.role === "tutor") {
+      await prisma.tutor.upsert({
+        where: { userId: user.id },
+        update: { status: "pending" },
+        create: {
+          userId: user.id,
+          status: "pending",
+          appliedAt: new Date(),
+        },
+      });
+    }
+    if (profile.role === "admin") {
+      await prisma.admin.upsert({
+        where: { userId: user.id },
+        update: {},
+        create: { userId: user.id },
+      });
+    }
+
+    // Tạo JWT
+    const token = signToken({
+      id: user.id,
+      role: user.role,
+      email: user.email,
+    });
+
+    // Set cookie
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     });
 
-    const { password: _, ...safeUser } = user;
-    return res.status(201).json({
-      message: "Đăng ký sinh viên thành công!",
-      user: safeUser
+    // Trả về thông tin user
+    return res.json({
+      message: "Đăng nhập HCMUT SSO thành công!",
+      user: {
+        id: user.id,
+        ssoSub: user.ssoSub,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        faculty: user.faculty,
+        isTutor: !!user.tutor,
+        tutorStatus: user.tutor?.status || null,
+        isAdmin: !!user.admin,
+      },
     });
-
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Lỗi server" });
-  }
-};
-
-// ==================== ĐĂNG KÝ TUTOR ====================
-export const registerTutor = async (req, res) => {
-  const { email, password, name, phoneNumber, dateOfBirth, faculty } = req.body;
-
-  if (!email || !password || !name) {
-    return res.status(400).json({ message: "Email, mật khẩu và họ tên là bắt buộc" });
-  }
-
-  if (await prisma.user.findUnique({ where: { email } })) {
-    return res.status(400).json({ message: "Email đã được sử dụng" });
-  }
-
-  const hashed = hashPassword(password);
-
-  try {
-    const user = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          email,
-          password: hashed,
-          name: name.trim(),
-          phoneNumber: phoneNumber?.trim() || null,
-          dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-          faculty: faculty?.trim() || null,
-          role: "tutor"
-        }
-      });
-
-      await tx.tutor.create({
-        data: {
-          userId: user.id,
-          status: "pending"
-        }
-      });
-
-      return user;
+    console.error("SSO Login Error:", error.message);
+    return res.status(401).json({
+      message: error.message || "Email không tồn tại trong hệ thống Bách Khoa",
     });
-
-    const token = signToken({ id: user.id, role: "tutor" });
-    res.cookie("token", token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 7 * 24 * 60 * 60 * 1000 });
-
-    const { password: _, ...safeUser } = user;
-    return res.status(201).json({
-      message: "Đăng ký làm tutor thành công! Hồ sơ đang chờ duyệt.",
-      user: safeUser,
-      tutorStatus: "pending"
-    });
-
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Lỗi server" });
   }
 };
 
-// ==================== LOGIN ====================
-export const login = async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ message: "Nhập email và mật khẩu" });
-
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: {
-      id: true, email: true, name: true, role: true, password: true,
-      phoneNumber: true, dateOfBirth: true, admissionDate: true, faculty: true,
-      student: true,
-      tutor: true
-    }
-  });
-
-  if (!user || !comparePassword(password, user.password)) {
-    return res.status(400).json({ message: "Sai email hoặc mật khẩu" });
-  }
-
-  const { password: _, ...safeUser } = user;
-  const token = signToken({ id: user.id, role: user.role });
-
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 7 * 24 * 60 * 60 * 1000
-  });
-
-  return res.json({ message: "Đăng nhập thành công", user: safeUser });
-};
-
-// ==================== ME ====================
-export const me = async (req, res) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user.id },
-    select: {
-      id: true, email: true, name: true, role: true,
-      phoneNumber: true, dateOfBirth: true, admissionDate: true, faculty: true,
-      student: true,
-      tutor: true
-    }
-  });
-
-  return res.json({ user });
-};
-
-//----------------- LOGOUT ====================
 export const logout = (req, res) => {
-  res.clearCookie("token", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict" });
-  res.json({ message: "Đăng xuất thành công" });
+  res.clearCookie("token", { path: "/" });
+  res.json({ message: "Đăng nhập thành công" });
 };
