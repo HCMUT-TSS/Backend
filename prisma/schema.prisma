@@ -13,167 +13,229 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ====================== USER - SSO CORE ======================
 model User {
-  id            Int      @id @default(autoincrement())
-  name          String?  @db.NVarChar(255)
-  email         String   @unique @db.NVarChar(255)
-  password      String   @db.VarChar(255)
-  phoneNumber   String?  @db.VarChar(20)
-  dateOfBirth   DateTime? @db.Date
+  id           Int       @id @default(autoincrement())
+  ssoSub       String    @unique @db.NVarChar(100)   // MSSV hoặc GVxxxxx (sub từ SSO)
+  ssoProvider  String    @default("hcmut") @db.VarChar(50)
+  email        String    @unique @db.NVarChar(255)
+  name         String?   @db.NVarChar(255)
+  phoneNumber  String?   @db.VarChar(20)
+  dateOfBirth  DateTime? @db.Date
   admissionDate DateTime? @db.Date
-  faculty       String?  @db.NVarChar(255)
-  role          String   @default("student") @db.VarChar(20) // student|tutor|admin
+  faculty      String?   @db.NVarChar(255)
 
-  student       Student?
-  tutor         Tutor?
-  admin         Admin?
+  role         String    @default("student") @db.VarChar(20) // student | tutor | admin
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  student Student?
+  tutor   Tutor?
+  admin   Admin?
+
   @@map("Users")
+  @@index([email])
+  @@index([ssoSub])
+  @@index([role])
+  @@index([faculty])
 }
 
+// ====================== STUDENT ======================
 model Student {
-  userId    Int      @id
-  mssv      String  @db.VarChar(20)
-  faculty   String?  @db.NVarChar(255)
+  userId      Int    @id
+  mssv        String @unique @db.VarChar(20) // trùng với ssoSub của sinh viên
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // Đồng bộ từ Datacore (tùy chọn mở rộng sau)
+  facultyCode String? @db.VarChar(10)
+  majorCode   String? @db.VarChar(10)
+  classCode   String? @db.VarChar(20)
+  gpa         Decimal? @db.Decimal(4, 2)
+  credits     Int?
 
-  requestBookings   RequestBooking[]
-  programStudents   TutorProgramStudent[]
-  sessionStudents   SessionStudent[]
-  reviews           Review[]
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
-  @@map("Student")
+  requestBookings RequestBooking[]
+  programStudents TutorProgramStudent[]
+  sessionStudents SessionStudent[]
+  attendances     Attendance[]
+  reviews         Review[]
+
+  @@map("Students")
+  @@index([mssv])
 }
 
+// ====================== TUTOR ======================
 model Tutor {
-  userId Int @id
-  status String @default("pending") @db.VarChar(20)
+  userId     Int      @id
+  status     String   @default("pending") @db.VarChar(20) // pending | approved | rejected | banned
   appliedAt  DateTime @default(now())
   approvedAt DateTime?
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  schedules Schedule[]
-  programs  TutorProgramTutor[]
+  rejectedAt DateTime?
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  schedules       Schedule[]
+  programs        TutorProgramTutor[]
   bookingRequests RequestBooking[]
-  @@map("Tutor")
+
+  @@map("Tutors")
 }
 
+// ====================== ADMIN ======================
 model Admin {
-  userId Int @id
+  userId Int  @id
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
   @@map("Admins")
 }
 
+// ====================== REQUEST BOOKING (yêu cầu gia sư) ======================
 model RequestBooking {
-  id        Int      @id @default(autoincrement())
-  studentId Int
-  tutorId   Int?
-  email     String   @db.VarChar(255)
-  faculty   String?  @db.NVarChar(255)
-  subject   String?  @db.NVarChar(255)
-  description String? @db.NVarChar(Max)
-  status    String?  @default("pending") @db.NVarChar(50)
-  createdAt DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  studentId   Int
+  tutorId     Int?
+  subject     String?  @db.NVarChar(255)
+  description String?  @db.NVarChar(Max)
+  status      String   @default("pending") @db.VarChar(50) // pending | matched | confirmed | cancelled | completed
+  createdAt   DateTime @default(now())
+  matchedAt   DateTime?
+  confirmedAt DateTime?
+  cancelledAt DateTime?
 
   student Student @relation(fields: [studentId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
-  tutor   Tutor?  @relation(fields: [tutorId],   references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  tutor   Tutor?  @relation(fields: [tutorId], references: [userId], onDelete: SetNull, onUpdate: NoAction)
 
-  @@map("RequestBooking")
+  @@map("RequestBookings")
+  @@index([studentId])
+  @@index([tutorId])
+  @@index([status])
 }
 
+// ====================== SCHEDULE (lịch cố định tutor) ======================
 model Schedule {
-  id        Int      @id @default(autoincrement())
+  id        Int   @id @default(autoincrement())
   tutorId   Int
-  dayOfWeek Int   
-  startTime String   @db.VarChar(10)
-  endTime   String   @db.VarChar(10)
+  dayOfWeek Int   // 0 = Chủ nhật, 1 = Thứ 2, ..., 6 = Thứ 7
+  startTime String @db.VarChar(10)  // "14:00"
+  endTime   String @db.VarChar(10)  // "16:00"
 
-  tutor     Tutor    @relation(fields: [tutorId], references: [userId], onDelete: Cascade)
+  tutor Tutor @relation(fields: [tutorId], references: [userId], onDelete: Cascade)
 
   @@unique([tutorId, dayOfWeek, startTime])
   @@map("Schedules")
 }
 
+// ====================== CHƯƠNG TRÌNH GIA SƯ NHÓM ======================
 model TutorProgram {
-  id          Int       @id @default(autoincrement())
-  title       String    @db.NVarChar(255)
-  description String?   @db.NVarChar(Max)
+  id          Int      @id @default(autoincrement())
+  title       String   @db.NVarChar(255)
+  description String?  @db.NVarChar(Max)
   timeOpen    DateTime? @db.Time
   timeClose   DateTime? @db.Time
-  isActive    Boolean   @default(true)
-  updatedAt   DateTime  @updatedAt
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   sessions Session[]
   students TutorProgramStudent[]
   tutors   TutorProgramTutor[]
 
-  @@map("TutorProgram")
+  @@map("TutorPrograms")
 }
 
 model TutorProgramStudent {
   programId Int
   studentId Int
 
-  program   TutorProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
-  student   Student      @relation(fields: [studentId], references: [userId], onDelete: Cascade)
+  program TutorProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  student Student     @relation(fields: [studentId], references: [userId], onDelete: Cascade)
 
   @@id([programId, studentId])
-  @@map("TutorProgramStudent")
+  @@map("TutorProgramStudents")
 }
 
 model TutorProgramTutor {
   programId Int
   tutorId   Int
 
-  program   TutorProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
-  tutor     Tutor        @relation(fields: [tutorId], references: [userId], onDelete: Cascade)
+  program TutorProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  tutor   Tutor       @relation(fields: [tutorId], references: [userId], onDelete: Cascade)
 
   @@id([programId, tutorId])
-  @@map("TutorProgramTutor")
+  @@map("TutorProgramTutors")
 }
 
+// ====================== BUỔI HỌC ======================
 model Session {
   id        Int      @id @default(autoincrement())
   programId Int
   topic     String?  @db.NVarChar(255)
-  status    String?  @db.NVarChar(50)
+  status    String   @default("scheduled") @db.VarChar(50)
   day       DateTime @db.Date
 
-  program   TutorProgram   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  program   TutorProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+
   resources Resource[]
   students  SessionStudent[]
+  attendances Attendance[]
   reviews   Review[]
 
-  @@map("Session")
+  @@map("Sessions")
+  @@index([programId])
+  @@index([day])
+}
+
+// Điểm danh
+model Attendance {
+  sessionId Int
+  studentId Int
+  status    String    @default("absent") @db.VarChar(20) // present | late | absent
+  checkedAt DateTime?
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [userId], onDelete: Cascade)
+
+  @@id([sessionId, studentId])
+  @@map("Attendances")
 }
 
 model SessionStudent {
   sessionId Int
   studentId Int
-  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  student   Student @relation(fields: [studentId], references: [userId], onDelete: Cascade)
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [userId], onDelete: Cascade)
+
   @@id([sessionId, studentId])
-  @@map("SessionStudent")
+  @@map("SessionStudents")
 }
 
+// ====================== TÀI LIỆU ======================
 model Resource {
-  id        Int     @id @default(autoincrement())
+  id        Int    @id @default(autoincrement())
   sessionId Int
-  name      String  @db.NVarChar(255)
-  type      String? @db.NVarChar(100)
-  url       String  @db.NVarChar(Max)
-  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  @@map("Resource")
+  name      String @db.NVarChar(255)
+  type      String? @db.NVarChar(100)  // pdf | video | link | drive
+  url       String @db.NVarChar(Max)
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("Resources")
 }
 
+// ====================== ĐÁNH GIÁ ======================
 model Review {
-  id          Int     @id @default(autoincrement())
+  id          Int    @id @default(autoincrement())
   sessionId   Int
   studentId   Int
+  rating      Int    // 1-5
   description String? @db.NVarChar(Max)
-  rating      Int
+  createdAt   DateTime @default(now())
 
-  session     Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  student     Student @relation(fields: [studentId], references: [userId])
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [userId], onDelete: Cascade)
 
-  @@map("Review")
+  @@map("Reviews")
 }
