@@ -7,8 +7,8 @@ Backend chính thức của hệ thống TSS – Full Express.js + Prisma 6.5.0 
 - Express.js 5
 - Prisma ORM 6.5.0 (ổn định 100% với SQL Server)
 - SQL Server 2019/2022/Express
-- JWT + Bcrypt
-- Cloudinary, Multer, Nodemailer, Helmet, Morgan, CORS
+- JWT
+- Cloudinary, Multer, Helmet, Morgan, CORS
 
 ## Cấu trúc thư mục (MVC chuẩn)
 
@@ -20,9 +20,9 @@ src/
 ├── routes/
 ├── utils/           # jwt.js, mailer.js
 ├── server.js        # entry point
+├── data/            #HCMUT_DATACORE(Mock)
 prisma/
 ├── schema.prisma
-├── seed.js (tùy chọn)
 ```
 ## Cách chạy dự án
 
@@ -39,7 +39,7 @@ npm install
 ```
 # File .env:
 # SQL Server
-DATABASE_URL=sqlserver://localhost:1433;database=YourDatabaseName;user=sa;password=123;encrypt=true;trustServerCertificate=true
+DATABASE_URL=sqlserver://localhost:1433;database=YourDatabaseName;user=YourDatabaseUsername;password=YourPassword;encrypt=true;trustServerCertificate=true
 
 # App
 PORT=5000
@@ -49,10 +49,10 @@ JWT_EXPIRES_IN=7d
 
 ## Sync database (tạo bảng tự động)
 ```
-npm run prisma:push
+npm run prisma:push hoặc npx prisma db push
 
 #Tạo admin(Chỉ cần dùng 1 lần duy nhất)
-npm scripts/createAdmin.js
+node scripts/createAdmin.js
 
 #Chạy server
 npm run dev        
