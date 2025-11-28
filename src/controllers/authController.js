@@ -1,6 +1,7 @@
 import { getProfileFromDATACORE } from "../data/mockHcmut.js";
 import { signToken } from "../utils/jwt.js";
 import prisma from "../config/db.js";
+import { syncUserAfterLogin } from "../middlewares/auth.js";
 
 const ALLOWED_DOMAINS = ["student.hcmut.edu.vn", "hcmut.edu.vn"];
 
@@ -22,6 +23,7 @@ export const ssoLogin = async (req, res) => {
     // Lấy profile từ mock DATACORE
     const profile = getProfileFromDATACORE(normalizedEmail);
 
+    const users = await syncUserAfterLogin(profile);
     // Tìm user theo email
     let user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -50,33 +52,6 @@ export const ssoLogin = async (req, res) => {
         where: { id: user.id },
         data: userData,
         include: { student: true, tutor: true, admin: true },
-      });
-    }
-
-    if ((profile.role === "student" || profile.role === "tutor")) {
-      await prisma.student.upsert({
-        where: { userId: user.id },
-        update: { mssv: profile.ssoSub },
-        create: { userId: user.id, mssv: profile.ssoSub },
-      });
-    }
-
-    if (profile.role === "tutor") {
-      await prisma.tutor.upsert({
-        where: { userId: user.id },
-        update: { status: "pending" },
-        create: {
-          userId: user.id,
-          status: "pending",
-          appliedAt: new Date(),
-        },
-      });
-    }
-    if (profile.role === "admin") {
-      await prisma.admin.upsert({
-        where: { userId: user.id },
-        update: {},
-        create: { userId: user.id },
       });
     }
 

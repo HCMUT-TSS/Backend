@@ -44,21 +44,31 @@ export const approveTutor = async (req, res) => {
   const { userId } = req.params;
 
   try {
-    const tutor = await prisma.tutor.update({
-      where: { userId: Number(userId) },
-      data: {
-        status: "approved",
-        approvedAt: new Date(),
-      },
-      include: {
-        user: {
-          select: { name: true, email: true, ssoSub: true },
+    const result = await prisma.$transaction(async (tx) => {
+      // Cập nhật trạng thái tutor
+      const tutor = await tx.tutor.update({
+        where: { userId: Number(userId) },
+        data: {
+          status: "approved",
+          approvedAt: new Date(),
         },
-      },
+        include: {
+          user: {
+            select: { name: true, email: true, ssoSub: true },
+          },
+        },
+      });
+      await tx.user.update({
+        where: { id: Number(userId) },
+        data: { role: "tutor" },
+      });
+
+      return tutor;
     });
+
     res.json({
-      message: `Đã duyệt tutor ${tutor.user.name} (MSSV: ${tutor.user.ssoSub}) thành công!`,
-      tutor,
+      message: `Đã duyệt thành công tutor ${result.user.name} (MSSV: ${result.user.ssoSub})`,
+      tutor: result,
     });
   } catch (error) {
     console.error(error);
