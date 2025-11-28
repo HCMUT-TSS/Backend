@@ -93,24 +93,30 @@ model Admin {
 
 // ====================== REQUEST BOOKING (yêu cầu gia sư) ======================
 model RequestBooking {
-  id          Int      @id @default(autoincrement())
-  studentId   Int
-  tutorId     Int?
-  subject     String?  @db.NVarChar(255)
-  description String?  @db.NVarChar(Max)
-  status      String   @default("pending") @db.VarChar(50) // pending | matched | confirmed | cancelled | completed
-  createdAt   DateTime @default(now())
-  matchedAt   DateTime?
-  confirmedAt DateTime?
-  cancelledAt DateTime?
+  id           Int      @id @default(autoincrement())
+  studentId    Int
+  tutorId      Int?     
+  subject      String?  @db.NVarChar(255)
+  description  String?  @db.NVarChar(Max)
+
+  preferredDate DateTime? @db.Date         // Ngày sinh viên muốn gặp (2025-12-15)
+  startTime    String?   @db.VarChar(5)    
+  endTime      String?   @db.VarChar(5)  
+
+  status       String    @default("pending") @db.VarChar(50)
+  createdAt    DateTime  @default(now())
+  matchedAt    DateTime?
+  confirmedAt  DateTime?
+  cancelledAt  DateTime?
 
   student Student @relation(fields: [studentId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
-  tutor   Tutor?  @relation(fields: [tutorId], references: [userId], onDelete: SetNull, onUpdate: NoAction)
+  tutor   Tutor?  @relation(fields: [tutorId],   references: [userId], onDelete: SetNull,  onUpdate: NoAction)
 
   @@map("RequestBookings")
   @@index([studentId])
   @@index([tutorId])
   @@index([status])
+  @@index([preferredDate]) 
 }
 
 // ====================== SCHEDULE (lịch cố định tutor) ======================
@@ -120,7 +126,7 @@ model Schedule {
   dayOfWeek Int   // 0 = Chủ nhật, 1 = Thứ 2, ..., 6 = Thứ 7
   startTime String @db.VarChar(10)  // "14:00"
   endTime   String @db.VarChar(10)  // "16:00"
-
+  isActive    Boolean  @default(true)
   tutor Tutor @relation(fields: [tutorId], references: [userId], onDelete: Cascade)
 
   @@unique([tutorId, dayOfWeek, startTime])
@@ -239,3 +245,4 @@ model Review {
 
   @@map("Reviews")
 }
+

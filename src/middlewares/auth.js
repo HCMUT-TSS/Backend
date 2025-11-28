@@ -33,3 +33,65 @@ export const requireRole = (role) => {
     next();
   };
 };
+
+export const syncUserAfterLogin = async (profileFromDATACORE) => {
+  const { ssoSub, email, name, faculty, role, phoneNumber, dateOfBirth, admissionDate } = profileFromDATACORE;
+
+  // Tìm hoặc tạo User
+  let user = await prisma.user.findUnique({
+    where: { ssoSub },
+    include: { tutor: true, admin: true },
+  });
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        ssoSub,
+        email,
+        name,
+        faculty,
+        phoneNumber,
+        dateOfBirth,
+        admissionDate,
+        role: role === 'admin' ? 'admin' : 'student',
+      },
+    });
+  } else {
+    // Cập nhật thông tin mới nhất từ DATACORE
+    await prisma.user.update({
+      where: { ssoSub },
+      data: { name, email, faculty, phoneNumber, dateOfBirth, admissionDate },
+    });
+  }
+
+  //Nếu DATACORE trả role = "tutor" → đảm bảo có bản ghi Tutor
+  if (role === 'tutor') {
+    if (!user.tutor) {
+      // Chưa từng có → tạo mới với trạng thái pending (lần đầu đăng ký)
+      await prisma.tutor.create({
+        data: {
+          userId: user.id,
+          status: 'pending',
+          appliedAt: new Date(),
+        },
+      });
+    }
+    // Nếu đã có tutor rồi → giữ nguyên status (approved/rejected/pending)
+  }
+
+  // Nếu là admin → tạo bản ghi Admin nếu chưa có
+  if (role === 'admin' && !user.admin) {
+    await prisma.admin.create({
+      data: { userId: user.id } });
+  }
+
+  // Cập nhật role User
+  if (role === 'tutor' || role === 'admin') {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { role },
+    });
+  }
+
+  return user;
+};
