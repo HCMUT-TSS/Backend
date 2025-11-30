@@ -118,7 +118,7 @@ export const HCMUT_DATABASE = {
 
   // ────────────────────── GIẢNG VIÊN / ADMIN ──────────────────────
   "KhoaMayTinh": {
-    name: "Phòng Công tác sinh viên",
+    name: "Khoa Khoa học và Kỹ thuật Máy Tính",
     email: "kkhktmt@hcmut.edu.vn",
     role: "admin",
     faculty: "Khoa KH&KT Máy Tính",
