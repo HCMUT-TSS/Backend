@@ -20,11 +20,9 @@ export const ssoLogin = async (req, res) => {
   }
 
   try {
-    // Lấy profile từ mock DATACORE
     const profile = getProfileFromDATACORE(normalizedEmail);
+    await syncUserAfterLogin(profile);
 
-    const users = await syncUserAfterLogin(profile);
-    // Tìm user theo email
     let user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
       include: { student: true, tutor: true, admin: true },
@@ -36,7 +34,7 @@ export const ssoLogin = async (req, res) => {
       email: normalizedEmail,
       name: profile.name,
       faculty: profile.faculty,
-      role: profile.role,              // student | tutor | admin
+      role: profile.role,
       phoneNumber: profile.phoneNumber,
       dateOfBirth: profile.dateOfBirth,
       admissionDate: profile.admissionDate,
@@ -55,24 +53,25 @@ export const ssoLogin = async (req, res) => {
       });
     }
 
-    // Tạo JWT
     const token = signToken({
       id: user.id,
       role: user.role,
       email: user.email,
     });
 
-    // Set cookie
+    const isProduction = process.env.NODE_ENV === "production";
+
+    // ←←←←← ĐOẠN NÀY LÀ QUAN TRỌNG NHẤT – ĐÃ FIX HOÀN HẢO ←←←←←
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      domain: "localhost",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+      secure: isProduction,                    // dev = false, prod = true
+      sameSite: isProduction ? "none" : "lax", // dev dùng lax, prod dùng none
+      domain: isProduction ? undefined : "localhost", // ← DÒNG CỨU CẢ DỰ ÁN KHI DÙNG VITE PROXY
+      path: "/",                               // bắt buộc phải có
+      maxAge: 7 * 24 * 60 * 60 * 1000,         // 7 ngày
     });
+    // ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
 
-    // Trả về thông tin user
     return res.json({
       message: "Đăng nhập HCMUT SSO thành công!",
       user: {
@@ -95,14 +94,17 @@ export const ssoLogin = async (req, res) => {
   }
 };
 
-// TRONG HÀM logout – SỬA LẠI CHO ĐÚNG
+// LOGOUT – CŨNG PHẢI ĐỒNG BỘ
 export const logout = (req, res) => {
+  const isProduction = process.env.NODE_ENV === "production";
+
   res.clearCookie("token", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/", 
-    domain: "localhost",
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    domain: isProduction ? undefined : "localhost", // ← cùng domain với lúc set
+    path: "/",                                      // ← bắt buộc
   });
+
   res.json({ message: "Đăng xuất thành công" });
 };
