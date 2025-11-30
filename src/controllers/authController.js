@@ -67,6 +67,8 @@ export const ssoLogin = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
+      path: "/",
+      domain: "localhost",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     });
 
@@ -93,7 +95,14 @@ export const ssoLogin = async (req, res) => {
   }
 };
 
+// TRONG HÀM logout – SỬA LẠI CHO ĐÚNG
 export const logout = (req, res) => {
-  res.clearCookie("token", { path: "/" });
-  res.json({ message: "Đăng nhập thành công" });
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/", 
+    domain: "localhost",
+  });
+  res.json({ message: "Đăng xuất thành công" });
 };
