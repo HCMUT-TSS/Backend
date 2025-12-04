@@ -45,13 +45,41 @@ export const ssoLogin = async (req, res) => {
         data: userData,
         include: { student: true, tutor: true, admin: true },
       });
+
     } else {
       user = await prisma.user.update({
         where: { id: user.id },
         data: userData,
         include: { student: true, tutor: true, admin: true },
       });
+      // THÊM ĐOẠN NÀY – TỰ ĐỘNG TẠO STUDENT/TUTOR KHI LOGIN (FIX LỖI FOREIGN KEY MÃI MÃI)
+    if (user.role === "student") {
+      await prisma.student.upsert({
+        where: { userId: user.id },
+        update: {},
+        create: {
+          userId: user.id,
+          mssv: user.email.split("@")[0],
+          facultyCode: profile.facultyCode || "KHMT",  // lấy từ DATACORE nếu có
+          majorCode: profile.majorCode || "KTPM",
+          classCode: profile.classCode || null,
+          gpa: null,
+          credits: null,
+        },
+      });
     }
+
+    if (user.role === "tutor") {
+      await prisma.tutor.upsert({
+        where: { userId: user.id },
+        update: {},
+        create: {
+          userId: user.id,
+          status: "pending",   // field duy nhất bắt buộc và chắc chắn có
+        },
+      });
+    }
+  }
 
     const token = signToken({
       id: user.id,
