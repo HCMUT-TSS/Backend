@@ -20,7 +20,10 @@ export const getAvailableSlots = async (req, res) => {
     let current = new Date(today);
     while (current <= future) {
       if (current.getDay() === sch.dayOfWeek) {
-        const dateStr = current.toISOString().split("T")[0];
+        const year = current.getFullYear();
+        const month = String(current.getMonth() + 1).padStart(2, '0');
+        const day = String(current.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
         const booked = await prisma.requestBooking.findFirst({
           where: {
             tutorId: sch.tutorId,
@@ -47,50 +50,74 @@ export const getAvailableSlots = async (req, res) => {
   res.json({ total: slots.length, slots });
 };
 
-// 5.	POST api/bookings/request: chọn tutor + request của sinh viên 1:1
+// 5. POST api/bookings/request
 export const createBookingRequest = async (req, res) => {
-  const { tutorId, preferredDate, startTime, endTime, subject, description } = req.body;
-  const studentId = req.user.id;
+  try {
+    // 1. THÊM 'location' VÀO ĐÂY
+    const { tutorId, preferredDate, startTime, endTime, subject, description, location } = req.body; 
+    const studentId = req.user.id;
 
-  const conflict = await prisma.requestBooking.findFirst({
-    where: {
-      tutorId,
-      preferredDate: new Date(preferredDate),
-      startTime,
-      status: { in: ["pending", "confirmed"] },
-    },
-  });
-  if (conflict) return res.status(400).json({ message: "Thời gian đã có người đặt" });
+    // Check trùng lịch (giữ nguyên)
+    const conflict = await prisma.requestBooking.findFirst({
+      where: {
+        tutorId,
+        preferredDate: new Date(preferredDate),
+        startTime,
+        status: { in: ["pending", "confirmed"] },
+      },
+    });
+    if (conflict) return res.status(400).json({ message: "Thời gian đã có người đặt" });
 
-  const booking = await prisma.requestBooking.create({
-    data: {
-      studentId,
-      tutorId,
-      subject,
-      description,
-      preferredDate: new Date(preferredDate),
-      startTime,
-      endTime,
-    },
-  });
-  res.status(201).json({ message: "Gửi yêu cầu thành công", booking });
+    // Tạo booking
+    const booking = await prisma.requestBooking.create({
+      data: {
+        studentId,
+        tutorId,
+        subject,
+        description,
+        preferredDate: new Date(preferredDate),
+        startTime,
+        endTime,
+        location: location || "Online", // 2. LƯU LOCATION VÀO DB (Nếu không có thì mặc định Online)
+      },
+    });
+
+    res.status(201).json({ message: "Gửi yêu cầu thành công", booking });
+  } catch (error) {
+    console.error("Booking Error:", error);
+    res.status(500).json({ message: "Lỗi server khi đặt lịch" });
+  }
 };
 
 // 9.	GET /api/my/bookings: Lịch sử các buổi học
 export const getMyBookings = async (req, res) => {
   const userId = req.user.id;
-  const isTutor = req.user.role === "tutor";
 
   const bookings = await prisma.requestBooking.findMany({
-    where: isTutor
-      ? { tutorId: userId, status: { not: "pending" } }
-      : { studentId: userId, status: { not: "pending" } },
+    where: { studentId: userId },
     include: {
-      tutor: { include: { user: { select: { name: true } } } },
-      student: { include: { user: { select: { name: true } } } },
+      tutor: {
+        include: {
+          user: { select: { name: true, faculty: true } }
+        }
+      }
     },
     orderBy: { preferredDate: "desc" },
   });
 
-  res.json({ bookings });
+  // ĐÚNG ĐỊNH DẠNG MÀ FRONTEND ĐANG CHỜ: tutorName, location, note, meetLink...
+  const formattedBookings = bookings.map(booking => ({
+    id: booking.id,
+    tutorName: booking.tutor?.user?.name || "Gia sư chưa xác định",
+    tutorId: booking.tutorId,
+    date: booking.preferredDate.toISOString().split('T')[0],
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+    status: booking.status,
+    location: booking.location || null,
+    note: booking.description || null,
+    meetLink: booking.meetLink || null,
+  }));
+
+  res.json({ bookings: formattedBookings });
 };

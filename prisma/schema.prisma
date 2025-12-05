@@ -103,6 +103,9 @@ model RequestBooking {
   startTime    String?   @db.VarChar(5)    
   endTime      String?   @db.VarChar(5)  
 
+  location      String?   @db.NVarChar(255) // Lưu địa điểm
+  meetLink      String?   @db.NVarChar(500) // Lưu link họp
+
   status       String    @default("pending") @db.VarChar(50)
   createdAt    DateTime  @default(now())
   matchedAt    DateTime?
@@ -245,4 +248,3 @@ model Review {
 
   @@map("Reviews")
 }
-
