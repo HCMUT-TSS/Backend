@@ -4,12 +4,12 @@ import prisma from "../config/db.js";
 import { syncUserAfterLogin } from "../middlewares/auth.js";
 
 const ALLOWED_DOMAINS = ["student.hcmut.edu.vn", "hcmut.edu.vn"];
-
+export const MOCK_PASSWORD = "123456";
 export const ssoLogin = async (req, res) => {
-  const { email } = req.body;
+  const { email, password } = req.body;
 
-  if (!email || typeof email !== "string") {
-    return res.status(400).json({ message: "Vui lòng cung cấp email HCMUT" });
+  if (!email || !password) {
+    return res.status(400).json({ message: "Vui lòng nhập email và mật khẩu" });
   }
 
   const normalizedEmail = email.trim().toLowerCase();
@@ -18,7 +18,11 @@ export const ssoLogin = async (req, res) => {
   if (!domain || !ALLOWED_DOMAINS.includes(domain)) {
     return res.status(403).json({ message: "Chỉ chấp nhận email HCMUT (@student.hcmut.edu.vn hoặc @hcmut.edu.vn)" });
   }
-
+  if (password !== MOCK_PASSWORD) {
+    return res.status(401).json({
+      message: "Sai mật khẩu!"
+    });
+  }
   try {
     const profile = getProfileFromDATACORE(normalizedEmail);
     await syncUserAfterLogin(profile);
@@ -52,34 +56,33 @@ export const ssoLogin = async (req, res) => {
         data: userData,
         include: { student: true, tutor: true, admin: true },
       });
-      // THÊM ĐOẠN NÀY – TỰ ĐỘNG TẠO STUDENT/TUTOR KHI LOGIN (FIX LỖI FOREIGN KEY MÃI MÃI)
-    if (user.role === "student") {
-      await prisma.student.upsert({
-        where: { userId: user.id },
-        update: {},
-        create: {
-          userId: user.id,
-          mssv: user.email.split("@")[0],
-          facultyCode: profile.facultyCode || "KHMT",  // lấy từ DATACORE nếu có
-          majorCode: profile.majorCode || "KTPM",
-          classCode: profile.classCode || null,
-          gpa: null,
-          credits: null,
-        },
-      });
-    }
+      if (user.role === "student") {
+        await prisma.student.upsert({
+          where: { userId: user.id },
+          update: {},
+          create: {
+            userId: user.id,
+            mssv: user.email.split("@")[0],
+            facultyCode: profile.facultyCode || "KHMT",
+            majorCode: profile.majorCode || "KTPM",
+            classCode: profile.classCode || null,
+            gpa: null,
+            credits: null,
+          },
+        });
+      }
 
-    if (user.role === "tutor") {
-      await prisma.tutor.upsert({
-        where: { userId: user.id },
-        update: {},
-        create: {
-          userId: user.id,
-          status: "pending",   // field duy nhất bắt buộc và chắc chắn có
-        },
-      });
+      if (user.role === "tutor") {
+        await prisma.tutor.upsert({
+          where: { userId: user.id },
+          update: {},
+          create: {
+            userId: user.id,
+            status: "pending",
+          },
+        });
+      }
     }
-  }
 
     const token = signToken({
       id: user.id,
@@ -89,16 +92,14 @@ export const ssoLogin = async (req, res) => {
 
     const isProduction = process.env.NODE_ENV === "production";
 
-    // ←←←←← ĐOẠN NÀY LÀ QUAN TRỌNG NHẤT – ĐÃ FIX HOÀN HẢO ←←←←←
     res.cookie("token", token, {
       httpOnly: true,
-      secure: isProduction,                    // dev = false, prod = true
-      sameSite: isProduction ? "none" : "lax", // dev dùng lax, prod dùng none
-      domain: isProduction ? undefined : "localhost", // ← DÒNG CỨU CẢ DỰ ÁN KHI DÙNG VITE PROXY
-      path: "/",                               // bắt buộc phải có
+      secure: isProduction,    
+      sameSite: isProduction ? "none" : "lax", 
+      domain: isProduction ? undefined : "localhost", 
+      path: "/",          
       maxAge: 7 * 24 * 60 * 60 * 1000,         // 7 ngày
     });
-    // ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
 
     return res.json({
       message: "Đăng nhập HCMUT SSO thành công!",
@@ -122,7 +123,6 @@ export const ssoLogin = async (req, res) => {
   }
 };
 
-// LOGOUT – CŨNG PHẢI ĐỒNG BỘ
 export const logout = (req, res) => {
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -130,8 +130,8 @@ export const logout = (req, res) => {
     httpOnly: true,
     secure: isProduction,
     sameSite: isProduction ? "none" : "lax",
-    domain: isProduction ? undefined : "localhost", // ← cùng domain với lúc set
-    path: "/",                                      // ← bắt buộc
+    domain: isProduction ? undefined : "localhost",
+    path: "/",                                      
   });
 
   res.json({ message: "Đăng xuất thành công" });

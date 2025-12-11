@@ -60,7 +60,6 @@ model Student {
   programStudents TutorProgramStudent[]
   sessionStudents SessionStudent[]
   attendances     Attendance[]
-  reviews         Review[]
 
   @@map("Students")
   @@index([mssv])
@@ -124,13 +123,18 @@ model RequestBooking {
 
 // ====================== SCHEDULE (lịch cố định tutor) ======================
 model Schedule {
-  id        Int   @id @default(autoincrement())
-  tutorId   Int
-  dayOfWeek Int   // 0 = Chủ nhật, 1 = Thứ 2, ..., 6 = Thứ 7
-  startTime String @db.VarChar(10)  // "14:00"
-  endTime   String @db.VarChar(10)  // "16:00"
-  isActive    Boolean  @default(true)
-  tutor Tutor @relation(fields: [tutorId], references: [userId], onDelete: Cascade)
+  id           Int      @id @default(autoincrement())
+  tutorId      Int
+  dayOfWeek    Int      // 0 = CN, 1 = T2, ..., 6 = T7
+  startTime    String   @db.VarChar(10)  // "14:00"
+  endTime      String   @db.VarChar(10)  // "16:00"
+  isActive     Boolean  @default(true)
+  tutor        Tutor    @relation(fields: [tutorId], references: [userId], onDelete: Cascade)
+  meetingType  String   @default("online") @db.VarChar(20) // "online" | "offline"
+  meetLink     String?  @db.NVarChar(500) 
+  location     String?  @db.NVarChar(255)           
+
+  sessions     Session[]
 
   @@unique([tutorId, dayOfWeek, startTime])
   @@map("Schedules")
@@ -147,7 +151,6 @@ model TutorProgram {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  sessions Session[]
   students TutorProgramStudent[]
   tutors   TutorProgramTutor[]
 
@@ -179,32 +182,27 @@ model TutorProgramTutor {
 // ====================== BUỔI HỌC ======================
 model Session {
   id        Int      @id @default(autoincrement())
-  programId Int
+  scheduleId Int
   topic     String?  @db.NVarChar(255)
   status    String   @default("scheduled") @db.VarChar(50)
   day       DateTime @db.Date
-
-  program   TutorProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
-
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   resources Resource[]
   students  SessionStudent[]
   attendances Attendance[]
-  reviews   Review[]
 
   @@map("Sessions")
-  @@index([programId])
   @@index([day])
 }
 
-// Điểm danh
 model Attendance {
   sessionId Int
   studentId Int
-  status    String    @default("absent") @db.VarChar(20) // present | late | absent
+  status    String    @default("absent") @db.VarChar(20)
   checkedAt DateTime?
 
-  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  student Student @relation(fields: [studentId], references: [userId], onDelete: Cascade)
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student   Student   @relation(fields: [studentId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([sessionId, studentId])
   @@map("Attendances")
@@ -214,8 +212,8 @@ model SessionStudent {
   sessionId Int
   studentId Int
 
-  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  student Student @relation(fields: [studentId], references: [userId], onDelete: Cascade)
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student   Student   @relation(fields: [studentId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([sessionId, studentId])
   @@map("SessionStudents")
@@ -232,19 +230,4 @@ model Resource {
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("Resources")
-}
-
-// ====================== ĐÁNH GIÁ ======================
-model Review {
-  id          Int    @id @default(autoincrement())
-  sessionId   Int
-  studentId   Int
-  rating      Int    // 1-5
-  description String? @db.NVarChar(Max)
-  createdAt   DateTime @default(now())
-
-  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  student Student @relation(fields: [studentId], references: [userId], onDelete: Cascade)
-
-  @@map("Reviews")
 }

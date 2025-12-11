@@ -1,6 +1,6 @@
 // controllers/tutorController.js
 import prisma from "../config/db.js";
-
+import { format } from "date-fns";
 // 1. GET: Xem lịch
 export const getMySchedule = async (req, res) => {
     try {
@@ -17,44 +17,132 @@ export const getMySchedule = async (req, res) => {
 
 // 2. POST: Tạo lịch (Backend nhận dữ liệu và lưu vào DB)
 export const createSchedule = async (req, res) => {
-    try {
-        const { dayOfWeek, startTime, endTime } = req.body;
-        const userId = req.user.id;
+  try {
+    const { dayOfWeek, startTime, endTime } = req.body;
+    const tutorId = req.user.id;
 
-        // 1. Kiểm tra quyền
-        const tutor = await prisma.tutor.findUnique({ where: { userId: userId } });
-        if (tutor?.status !== "approved") {
-            return res.status(403).json({ message: "Tài khoản chưa được duyệt" });
-        }
-
-        // 2. Tạo lịch
-        const schedule = await prisma.schedule.create({
-            data: { 
-                tutorId: userId, 
-                dayOfWeek: Number(dayOfWeek), 
-                startTime, 
-                endTime 
-            },
-        });
-        
-        res.status(201).json({ message: "Thêm lịch thành công", schedule });
-
-    } catch (error) {
-        console.error("🔥 Server Error:", error);
-
-        // --- BẮT LỖI TRÙNG LỊCH ĐỂ GỬI VỀ UI ---
-        if (error.code === 'P2002') {
-            // Trả về mã 409 (Conflict)
-            return res.status(409).json({ 
-                message: "Lịch này đã bị trùng! Bạn đã tạo khung giờ này rồi." 
-            });
-        }
-
-        return res.status(500).json({ 
-            message: "Lỗi hệ thống", 
-            error: error.message 
-        });
+    const tutor = await prisma.tutor.findUnique({ where: { userId: tutorId } });
+    if (tutor?.status !== "approved") {
+      return res.status(403).json({ message: "Chưa được duyệt làm tutor" });
     }
+
+    const schedule = await prisma.schedule.create({
+      data: { tutorId, dayOfWeek: Number(dayOfWeek), startTime, endTime },
+    });
+
+    const today = new Date();
+    const sessions = [];
+
+    for (let i = 0; i < 8; i++) {
+      const targetDate = new Date(today);
+      const daysToAdd = ((dayOfWeek - today.getDay() + 7) % 7) + i * 7;
+      targetDate.setDate(today.getDate() + daysToAdd);
+
+      if (targetDate >= new Date().setHours(0, 0, 0, 0)) {
+        const session = await prisma.session.create({
+          data: {
+            scheduleId: schedule.id,
+            day: targetDate,
+            status: "scheduled",
+            topic: `Buổi tư vấn - ${format(targetDate, 'dd/MM/yyyy')}`,
+          },
+        });
+        sessions.push(session);
+      }
+    }
+
+    res.status(201).json({
+      message: `Tạo lịch thành công! Đã tạo ${sessions.length} buổi học tự động`,
+      schedule,
+      sessions,
+    });
+
+  } catch (error) {
+    if (error.code === 'P2002') {
+      return res.status(409).json({ message: "Lịch này đã bị trùng!" });
+    }
+    console.error(error);
+    res.status(500).json({ message: "Lỗi hệ thống" });
+  }
+};
+
+// BỔ SUNG: PATCH /api/tutor/schedules/:id - CẬP NHẬT LỊCH RẢNH
+export const updateSchedule = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { dayOfWeek, startTime, endTime } = req.body;
+    const tutorId = req.user.id;
+
+    // 1. Kiểm tra quyền sở hữu
+    const oldSchedule = await prisma.schedule.findUnique({
+      where: { id: Number(id) },
+    });
+
+    if (!oldSchedule || oldSchedule.tutorId !== tutorId) {
+      return res.status(403).json({ message: "Bạn không có quyền sửa lịch này" });
+    }
+
+    // 2. Cập nhật Schedule
+    const updatedSchedule = await prisma.schedule.update({
+      where: { id: Number(id) },
+      data: {
+        dayOfWeek: dayOfWeek !== undefined ? Number(dayOfWeek) : undefined,
+        startTime: startTime || undefined,
+        endTime: endTime || undefined,
+      },
+    });
+
+    // 3. CẬP NHẬT TẤT CẢ SESSION TƯƠNG LAI (từ hôm nay trở đi)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const futureSessions = await prisma.session.findMany({
+      where: {
+        scheduleId: Number(id),
+        day: { gte: today },
+      },
+    });
+
+    let updatedCount = 0;
+
+    for (const session of futureSessions) {
+      const oldDate = new Date(session.day);
+      let newDate = new Date(oldDate);
+
+      // Nếu đổi ngày trong tuần → tính lại ngày mới
+      if (dayOfWeek !== undefined) {
+        const oldDay = oldDate.getDay(); // 0 = CN, 1 = T2
+        const newDay = Number(dayOfWeek);
+        const diff = (newDay - oldDay + 7) % 7;
+        newDate.setDate(oldDate.getDate() + diff);
+      }
+
+      await prisma.session.update({
+        where: { id: session.id },
+        data: {
+          day: newDate,
+          startTime: startTime || session.startTime,
+          endTime: endTime || session.endTime,
+          topic: `Buổi tư vấn - ${format(newDate, 'dd/MM/yyyy')}`,
+        },
+      });
+      updatedCount++;
+    }
+
+    res.json({
+      message: "Cập nhật lịch thành công!",
+      detail: `Đã điều chỉnh ${updatedCount} buổi học tương lai`,
+      schedule: updatedSchedule,
+      updatedSessions: updatedCount,
+    });
+
+  } catch (error) {
+    console.error("Update Schedule Error:", error);
+    if (error.code === 'P2025') {
+      return res.status(404).json({ message: "Không tìm thấy lịch" });
+    }
+    res.status(500).json({ message: "Lỗi server khi cập nhật lịch" });
+  }
 };
 
 // 3. DELETE: Xóa lịch
@@ -65,8 +153,8 @@ export const deleteSchedule = async (req, res) => {
 
         // Xóa đúng lịch của tutor đó
         const result = await prisma.schedule.deleteMany({
-            where: { 
-                id: Number(id), 
+            where: {
+                id: Number(id),
                 tutorId // Bảo mật: Chỉ xóa lịch của chính mình
             },
         });
@@ -87,14 +175,14 @@ export const getPendingRequests = async (req, res) => {
     const tutorId = req.user.id;
     // XÓA filter status: "pending" để lấy cả confirmed hiển thị lên lịch
     const requests = await prisma.requestBooking.findMany({
-        where: { tutorId }, 
+        where: { tutorId },
         include: {
-            student: { 
-                include: { 
-                    user: { 
+            student: {
+                include: {
+                    user: {
                         select: { name: true, ssoSub: true, faculty: true, email: true } // Thêm email nếu schema có
-                    } 
-                } 
+                    }
+                }
             },
         },
         orderBy: { preferredDate: "desc" }, // Sắp xếp theo ngày dự kiến học
@@ -103,31 +191,105 @@ export const getPendingRequests = async (req, res) => {
 };
 
 //7.	PATCH /api/tutor/booking-requests/:id/confirm: xác nhận tư vấn
-export const confirmRequests = async (req,res) =>{
-    const { id } = req.params;
-  const booking = await prisma.requestBooking.update({
-    where: { id: Number(id) },
-    data: {
-      status: "confirmed",
-      confirmedAt: new Date(),
-    },
-    include: {
-      student: { include: { user: { select: { name: true } } } },
-    },
-  });
-  res.json({ message: "Đã xác nhận buổi tư vấn", booking });
-};
-
-//8.	PATCH /api/tutor/booking-requests/:id/reject: từ chối tư vấn 
-export const rejectRequests = async (req, res) => {
+// confirmRequests
+export const confirmRequests = async (req, res) => {
   const { id } = req.params;
 
   const booking = await prisma.requestBooking.update({
     where: { id: Number(id) },
-    data: {
-      status: "rejected",
-      cancelledAt: new Date(),
+    data: { status: "confirmed", confirmedAt: new Date() },
+  });
+
+  // TÌM SESSION TƯƠNG ỨNG
+  const session = await prisma.session.findFirst({
+    where: {
+      programId: booking.tutorId, // nếu bạn dùng programId = tutorId hoặc scheduleId
+      day: {
+        gte: new Date(booking.preferredDate).setHours(0, 0, 0, 0),
+        lt: new Date(booking.preferredDate).setHours(24, 0, 0, 0),
+      },
     },
   });
-  res.json({ message: "Đã từ chối yêu cầu", booking });
+
+  if (session) {
+    // THÊM SINH VIÊN VÀO SESSION
+    await prisma.sessionStudent.upsert({
+      where: {
+        sessionId_studentId: {
+          sessionId: session.id,
+          studentId: booking.studentId,
+        },
+      },
+      update: {},
+      create: {
+        sessionId: session.id,
+        studentId: booking.studentId,
+      },
+    });
+
+    // TỰ ĐỘNG TẠO BẢN GHI ĐIỂM DANH (mặc định absent)
+    await prisma.attendance.upsert({
+      where: {
+        sessionId_studentId: {
+          sessionId: session.id,
+          studentId: booking.studentId,
+        },
+      },
+      update: {},
+      create: {
+        sessionId: session.id,
+        studentId: booking.studentId,
+        status: "absent",
+      },
+    });
+  }
+
+  res.json({ message: "Đã xác nhận và thêm sinh viên vào buổi học", booking });
+};
+
+//8.	PATCH /api/tutor/booking-requests/:id/reject: từ chối tư vấn 
+export const rejectRequests = async (req, res) => {
+    const { id } = req.params;
+
+    const booking = await prisma.requestBooking.update({
+        where: { id: Number(id) },
+        data: {
+            status: "rejected",
+            cancelledAt: new Date(),
+        },
+    });
+    res.json({ message: "Đã từ chối yêu cầu", booking });
+};
+
+//10. POST /api/tutor/sessions/:id/resources: Thêm tài liệu vào Session(dùng Mock) 
+export const addResourceToSession = async (req, res) => {
+  const { id } = req.params;
+  const { name, type, url } = req.body;
+
+  const resource = await prisma.resource.create({
+    data: {
+      sessionId: Number(id),
+      name,
+      type: type || "link",
+      url,
+    },
+  });
+
+  res.json({ message: "Đã thêm tài liệu", resource });
+};
+
+//11.  GET /api/tutor/sessions/:id
+export const getSessionDetail = async (req, res) => {
+  const { id } = req.params;
+
+  const session = await prisma.session.findUnique({
+    where: { id: Number(id) },
+    include: {
+      resources: true,
+      students: { include: { student: { include: { user: true } } } },
+      attendances: { include: { student: { include: { user: true } } } },
+    },
+  });
+
+  res.json({ session });
 };
