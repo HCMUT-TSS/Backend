@@ -8,46 +8,74 @@ export const getAvailableSlots = async (req, res) => {
   const future = new Date(today);
   future.setDate(today.getDate() + days);
 
-  const schedules = await prisma.schedule.findMany({
-    where: { isActive: true, tutor: { status: "approved" } },
-    include: {
-      tutor: { include: { user: { select: { name: true, faculty: true, ssoSub: true } } } },
-    },
-  });
-
-  const slots = [];
-  for (const sch of schedules) {
-    let current = new Date(today);
-    while (current <= future) {
-      if (current.getDay() === sch.dayOfWeek) {
-        const year = current.getFullYear();
-        const month = String(current.getMonth() + 1).padStart(2, '0');
-        const day = String(current.getDate()).padStart(2, '0');
-        const dateStr = `${year}-${month}-${day}`;
-        const booked = await prisma.requestBooking.findFirst({
-          where: {
-            tutorId: sch.tutorId,
-            preferredDate: new Date(dateStr),
-            startTime: sch.startTime,
-            status: { in: ["pending", "confirmed"] },
-          },
-        });
-        if (!booked) {
-          slots.push({
-            tutorId: sch.tutorId,
-            tutorName: sch.tutor.user.name,
-            faculty: sch.tutor.user.faculty,
-            mssv: sch.tutor.user.ssoSub,
-            date: dateStr,
-            startTime: sch.startTime,
-            endTime: sch.endTime,
-          });
+  try {
+    const schedules = await prisma.schedule.findMany({
+      where: {
+        isActive: true,
+        tutor: { status: "approved" },
+      },
+      include: {
+        tutor: {
+          include: {
+            user: {
+              select: { name: true, faculty: true, ssoSub: true }
+            }
+          }
         }
+      },
+    });
+
+    const slots = [];
+
+    for (const sch of schedules) {
+      let current = new Date(today);
+
+      while (current <= future) {
+        // Chuyển Chủ Nhật (0) thành 7 để so sánh với dayOfWeek trong DB
+        const currentDay = current.getDay() === 0 ? 7 : current.getDay();
+
+        if (currentDay === sch.dayOfWeek) {
+          const dateStr = current.toISOString().split('T')[0];
+
+          // Kiểm tra đã có ai đặt chưa
+          const booked = await prisma.requestBooking.findFirst({
+            where: {
+              tutorId: sch.tutorId,
+              preferredDate: new Date(dateStr),
+              startTime: sch.startTime,
+              status: { in: ["pending", "confirmed"] },
+            },
+          });
+
+          if (!booked) {
+            slots.push({
+              tutorId: sch.tutorId,
+              tutorName: sch.tutor.user.name,
+              faculty: sch.tutor.user.faculty || null,
+              mssv: sch.tutor.user.ssoSub,
+              date: dateStr,
+              startTime: sch.startTime,
+              endTime: sch.endTime,
+              // TRẢ VỀ ĐẦY ĐỦ THÔNG TIN CHO FRONTEND
+              title: sch.title || "Tư vấn 1:1",
+              location: sch.location || null,
+              meetingType: sch.meetingType || null,
+              meetLink: sch.meetLink || null,
+            });
+          }
+        }
+        current.setDate(current.getDate() + 1);
       }
-      current.setDate(current.getDate() + 1);
     }
+
+    res.json({ 
+      total: slots.length, 
+      slots 
+    });
+  } catch (error) {
+    console.error("Lỗi lấy slot rảnh:", error);
+    res.status(500).json({ message: "Lỗi server khi tải lịch" });
   }
-  res.json({ total: slots.length, slots });
 };
 
 // 5. POST api/bookings/request

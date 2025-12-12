@@ -135,6 +135,7 @@ model Schedule {
   location     String?  @db.NVarChar(255)           
 
   sessions     Session[]
+  title     String?  
 
   @@unique([tutorId, dayOfWeek, startTime])
   @@map("Schedules")
