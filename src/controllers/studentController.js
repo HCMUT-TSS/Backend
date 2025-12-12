@@ -81,11 +81,32 @@ export const getAvailableSlots = async (req, res) => {
 // 5. POST api/bookings/request
 export const createBookingRequest = async (req, res) => {
   try {
-    // 1. THÊM 'location' VÀO ĐÂY
     const { tutorId, preferredDate, startTime, endTime, subject, description, location } = req.body; 
     const studentId = req.user.id;
 
-    // Check trùng lịch (giữ nguyên)
+    // --- LOGIC MỚI: TÌM SCHEDULE TITLE ---
+    const dateObj = new Date(preferredDate);
+    // Chuyển đổi ngày sang thứ (0-6)
+    const jsDay = dateObj.getDay(); 
+    // Logic khớp với hàm getAvailableSlots: Nếu là Chủ nhật (0) thì đổi thành 7, còn lại giữ nguyên
+    // (Lưu ý: Kiểm tra lại DB của bạn lưu CN là 0 hay 7, ở đây mình theo logic getAvailableSlots của bạn)
+    const dbDayOfWeek = jsDay === 0 ? 7 : jsDay;
+
+    // Tìm lịch gốc của Tutor để lấy Title
+    const scheduleSource = await prisma.schedule.findFirst({
+      where: {
+        tutorId: Number(tutorId), // Đảm bảo kiểu dữ liệu là Number
+        dayOfWeek: dbDayOfWeek,   // Tìm theo thứ
+        startTime: startTime,     // Tìm theo giờ bắt đầu
+        isActive: true
+      }
+    });
+
+    // Lấy title tìm được. Nếu không thấy thì dùng subject (từ user) hoặc fallback
+    const titleToSave = scheduleSource?.title || subject || "Buổi học";
+    // -------------------------------------
+
+    // Check trùng lịch (giữ nguyên logic cũ)
     const conflict = await prisma.requestBooking.findFirst({
       where: {
         tutorId,
@@ -106,7 +127,12 @@ export const createBookingRequest = async (req, res) => {
         preferredDate: new Date(preferredDate),
         startTime,
         endTime,
-        location: location || "Online", // 2. LƯU LOCATION VÀO DB (Nếu không có thì mặc định Online)
+        location: location || "Online",
+        
+        // --- QUAN TRỌNG: LƯU TITLE VÀO DB ---
+        // (Đảm bảo bạn đã chạy lệnh ALTER TABLE add column scheduleTitle như bài trước)
+        scheduleTitle: titleToSave, 
+        // ------------------------------------
       },
     });
 
@@ -133,7 +159,7 @@ export const getMyBookings = async (req, res) => {
     orderBy: { preferredDate: "desc" },
   });
 
-  // ĐÚNG ĐỊNH DẠNG MÀ FRONTEND ĐANG CHỜ: tutorName, location, note, meetLink...
+  // ĐÚNG ĐỊNH DẠNG MÀ FRONTEND ĐANG CHỜ
   const formattedBookings = bookings.map(booking => ({
     id: booking.id,
     tutorName: booking.tutor?.user?.name || "Gia sư chưa xác định",
@@ -145,6 +171,10 @@ export const getMyBookings = async (req, res) => {
     location: booking.location || null,
     note: booking.description || null,
     meetLink: booking.meetLink || null,
+    
+    // --- TRẢ VỀ TITLE ĐÃ LƯU ---
+    // Ưu tiên lấy scheduleTitle (từ DB), nếu null thì lấy subject, hoặc text mặc định
+    title: booking.scheduleTitle || booking.subject || "Buổi học",
   }));
 
   res.json({ bookings: formattedBookings });

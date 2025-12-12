@@ -15,31 +15,30 @@ datasource db {
 
 // ====================== USER - SSO CORE ======================
 model User {
-  id           Int       @id @default(autoincrement())
-  ssoSub       String    @unique @db.NVarChar(100)   // MSSV hoặc GVxxxxx (sub từ SSO)
-  ssoProvider  String    @default("hcmut") @db.VarChar(50)
-  email        String    @unique @db.NVarChar(255)
-  name         String?   @db.NVarChar(255)
-  phoneNumber  String?   @db.VarChar(20)
-  dateOfBirth  DateTime? @db.Date
+  id          Int       @id @default(autoincrement())
+  ssoSub      String    @unique @db.NVarChar(100)
+  ssoProvider String    @default("hcmut") @db.VarChar(50)
+  email       String    @unique @db.NVarChar(255)
+  name        String?   @db.NVarChar(255)
+  phoneNumber String?   @db.VarChar(20)
+  dateOfBirth DateTime? @db.Date
   admissionDate DateTime? @db.Date
-  faculty      String?   @db.NVarChar(255)
+  faculty     String?   @db.NVarChar(255)
+  role        String    @default("student") @db.VarChar(20)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
-  role         String    @default("student") @db.VarChar(20) // student | tutor | admin
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  student     Student?
+  tutor       Tutor?
+  admin       Admin?
 
-  student Student?
-  tutor   Tutor?
-  admin   Admin?
+  // QUAN HỆ NGƯỢC → PHẢI ĐẶT TÊN ĐÚNG VỚI BÊN KIA
+  posts       Post[]      @relation("PostAuthor")
+  comments    Comment[]   @relation("CommentAuthor")
 
   @@map("Users")
-  @@index([email])
-  @@index([ssoSub])
-  @@index([role])
-  @@index([faculty])
 }
 
 // ====================== STUDENT ======================
@@ -104,6 +103,7 @@ model RequestBooking {
 
   location      String?   @db.NVarChar(255) // Lưu địa điểm
   meetLink      String?   @db.NVarChar(500) // Lưu link họp
+  scheduleTitle String?   @db.NVarChar(255)
 
   status       String    @default("pending") @db.VarChar(50)
   createdAt    DateTime  @default(now())
@@ -136,6 +136,7 @@ model Schedule {
 
   sessions     Session[]
   title     String?  
+  posts       Post[]
 
   @@unique([tutorId, dayOfWeek, startTime])
   @@map("Schedules")
@@ -182,15 +183,19 @@ model TutorProgramTutor {
 
 // ====================== BUỔI HỌC ======================
 model Session {
-  id        Int      @id @default(autoincrement())
-  scheduleId Int
-  topic     String?  @db.NVarChar(255)
-  status    String   @default("scheduled") @db.VarChar(50)
-  day       DateTime @db.Date
-  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  resources Resource[]
-  students  SessionStudent[]
+  id          Int       @id @default(autoincrement())
+  scheduleId  Int
+  topic       String?   @db.NVarChar(255)
+  status      String    @default("scheduled") @db.VarChar(50)
+  day         DateTime  @db.Date
+
+  schedule    Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  
+  // ĐỔI TÊN: resources → sessionResources (tránh xung đột với Resource của Post)
+  sessionResources SessionResource[]
+  students    SessionStudent[]
   attendances Attendance[]
+  // posts       Post[]
 
   @@map("Sessions")
   @@index([day])
@@ -221,14 +226,63 @@ model SessionStudent {
 }
 
 // ====================== TÀI LIỆU ======================
-model Resource {
-  id        Int    @id @default(autoincrement())
+model SessionResource {
+  id        Int       @id @default(autoincrement())
   sessionId Int
-  name      String @db.NVarChar(255)
-  type      String? @db.NVarChar(100)  // pdf | video | link | drive
-  url       String @db.NVarChar(Max)
+  name      String    @db.NVarChar(255)
+  type      String?   @db.NVarChar(100)
+  url       String    @db.NVarChar(Max)
 
-  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
-  @@map("Resources")
+  @@map("Resources") // vẫn giữ tên bảng cũ để không mất dữ liệu
+}
+model Post {
+  id         Int       @id @default(autoincrement())
+  // sessionId  Int
+  authorId   Int
+  title      String    @db.NVarChar(500)
+  content    String    @db.NVarChar(Max)
+  category   String?   @default("class")
+  isPinned   Boolean   @default(false)
+  likes      Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // session    Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  author     User      @relation("PostAuthor", fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  scheduleId  Int      
+  schedule    Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  comments   Comment[]
+  resources  CommunityResource[]  // DÙNG CommunityResource
+
+  @@map("Posts")
+}
+
+model Comment {
+  id        Int       @id @default(autoincrement())
+  postId    Int
+  authorId    Int
+  content   String    @db.NVarChar(Max)
+  createdAt DateTime  @default(now())
+
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  // QUAN HỆ ĐÚNG VỚI USER → PHẢI ĐẶT TÊN "CommentAuthor"
+  author    User      @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("Comments")
+}
+
+model CommunityResource {
+  id        Int       @id @default(autoincrement())
+  postId    Int
+  name      String    @db.NVarChar(255)
+  type      String    @default("link") @db.VarChar(50)
+  url       String    @db.NVarChar(Max)
+  createdAt DateTime  @default(now())
+
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("CommunityResources")
 }

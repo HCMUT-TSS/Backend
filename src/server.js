@@ -8,6 +8,7 @@ import adminRoutes from './routes/admin.js';
 import tutorRoutes from './routes/tutor.js';
 import studentRoutes from './routes/student.js';
 import userRoutes from './routes/user.js';
+import communityRoutes from './routes/community.js';
 const app = express();
 
 app.set('trust proxy', 1);
@@ -32,6 +33,7 @@ app.use("/api/user", userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use("/api/tutor", tutorRoutes);
 app.use('/api/student', studentRoutes);
+app.use('/api/community', communityRoutes);
 
 //Check health
 app.get('/health', (req, res) => {
