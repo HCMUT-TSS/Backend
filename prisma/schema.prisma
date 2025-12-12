@@ -103,6 +103,7 @@ model RequestBooking {
 
   location      String?   @db.NVarChar(255) // Lưu địa điểm
   meetLink      String?   @db.NVarChar(500) // Lưu link họp
+  scheduleTitle String?   @db.NVarChar(255)
 
   status       String    @default("pending") @db.VarChar(50)
   createdAt    DateTime  @default(now())
@@ -135,6 +136,7 @@ model Schedule {
 
   sessions     Session[]
   title     String?  
+  posts       Post[]
 
   @@unique([tutorId, dayOfWeek, startTime])
   @@map("Schedules")
@@ -193,7 +195,7 @@ model Session {
   sessionResources SessionResource[]
   students    SessionStudent[]
   attendances Attendance[]
-  posts       Post[]
+  // posts       Post[]
 
   @@map("Sessions")
   @@index([day])
@@ -237,7 +239,7 @@ model SessionResource {
 }
 model Post {
   id         Int       @id @default(autoincrement())
-  sessionId  Int
+  // sessionId  Int
   authorId   Int
   title      String    @db.NVarChar(500)
   content    String    @db.NVarChar(Max)
@@ -247,9 +249,10 @@ model Post {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  session    Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  // session    Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   author     User      @relation("PostAuthor", fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
+  scheduleId  Int      
+  schedule    Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   comments   Comment[]
   resources  CommunityResource[]  // DÙNG CommunityResource
 

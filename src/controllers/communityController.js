@@ -38,20 +38,26 @@ export const getSessionClasses = async (req, res) => {
 
 // TẠO BÀI VIẾT
 export const createPost = async (req, res) => {
+  // Frontend gửi lên sessionId (thực chất là scheduleId từ trang danh sách)
   const { sessionId, title, content } = req.body;
   const authorId = req.user.id;
 
   try {
     const post = await prisma.post.create({
-      data: { sessionId: Number(sessionId), authorId, title, content },
+      data: { 
+        // Lưu vào cột scheduleId thay vì sessionId
+        scheduleId: Number(sessionId), 
+        authorId, 
+        title, 
+        content 
+      },
     });
     res.status(201).json({ post });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Lỗi tạo bài viết" });
+    res.status(500).json({ message: "Lỗi tạo bài viết: " + error.message });
   }
 };
-
 // TẠO BÌNH LUẬN
 export const createComment = async (req, res) => {
   const { postId, content } = req.body;
@@ -70,11 +76,12 @@ export const createComment = async (req, res) => {
 
 // LẤY BÀI VIẾT + BÌNH LUẬN CỦA 1 LỚP
 export const getClassPosts = async (req, res) => {
-  const { sessionId } = req.params;
+  const { sessionId } = req.params; // Đây thực chất là scheduleId
 
   try {
     const posts = await prisma.post.findMany({
-      where: { sessionId: Number(sessionId) },
+      // Tìm theo scheduleId
+      where: { scheduleId: Number(sessionId) }, 
       include: {
         author: { select: { name: true } },
         comments: {
